@@ -1,0 +1,18 @@
+Stock Predictor
+
+For this porject I want to make a bot using python. The bot will have the following two options were it
+ can trade on a daily basis and on a long term.
+
+--Major Features--
+
+We will implement the daily basis option first:
+Next will be the long term:
+Lastly we will have a GUI made for it where it will display the trades. 
+
+--Roadmap--
+-We first will test out the prediction using Apple Stock
+	-We have data from 95' on a daily basis
+	-Use the previous to predict future data
+	-Use a specific subset of data to predict on a daily basis
+-Then we will implement the option to do all the stocks in the market
+Will describe more features later...
