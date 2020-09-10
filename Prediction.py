@@ -64,6 +64,7 @@ class StockGenerator():
             data=data,
             targets=None,
             sequence_length=self.total_window_size,
+            sampling_rate = 1,
             sequence_stride=1,
             shuffle=True,
             batch_size=32            
@@ -71,27 +72,99 @@ class StockGenerator():
         
         ds = ds.map(self.split_window)
         return ds
+    
+    def plot(self, model=None, plot_col='Close', max_subplots=3):
+        inputs, labels = self.example
+        plt.figure(figsize=(12,8))
+        plot_col_index = self.column_indices[plot_col]
+        max_n = min(max_subplots, len(inputs))
+        for n in range(max_n):
+            plt.subplot(3, 1, n+1)
+            plt.ylabel(f'{plot_col} [normed]')
+            plt.plot(self.input_indices, inputs[n, :, plot_col_index],
+                     label='Inputs', marker='.', zorder=-10)
+            
+            if self.label_columns:
+                label_col_index = self.label_columns_indices.get(plot_col, None)
+            else:
+                label_col_index = plot_col_index
         
+            if label_col_index is None:
+                continue
+            
+            plt.scatter(self.label_indices, labels[n, :, label_col_index],
+                        edgecolors='k', label='Labels', c='#2ca0c', s=64)
+            
+            if model is not None:
+                predictions = model(inputs)
+                plt.scatter(self.label_indices, predictions[n,:,label_col_index],
+                            marker='X', edgecolors='k', label='Predictions',c='#ff7f0e',s=64)
+            
+            if n == 0:
+                plt.legend()
+            plt.xlabel('Days [d]')
+            
+    @property
+    def train(self):
+        return self.make_dataset(self.train_df)
+
+    @property
+    def val(self):
+        return self.make_dataset(self.val_df)
     
-df = pd.read_csv('AAPL.csv')
-#print(df.head())
-#Testing will be done on a 70%, 20%, 10% where
-    #70% = training
-    #20% = validation
-    #10% = test sets
+    @property
+    def test(self):
+        return self.make_dataset(self.test_df)
     
-train_df = df[:int(len(df)*.7)]
-val_df = df[int(len(df)*.7):int(len(df)*.9)]
-test_df = df[int(len(df)*.9):]
+    StockGenerator.train = train
+    StockGenerator.val = val
+    StockGenerator.test = test
+    
+    
+class Baseline(tf.keras.Model):
+    def __init__(self, label_index=None):
+        super().__init__()
+        self.label_index = label_index
+        
+    def call(self, inputs):
+        if self.label_index is None:
+            return inputs
+        result = inputs[:,:,self.label_index]
+        return result[:,:,tf.newaxis]
+         
+    
+if __name__ == '__main__':
+    
+    #print(df.head())
+    #Testing will be done on a 70%, 20%, 10% where
+        #70% = training
+        #20% = validation
+        #10% = test sets
+    df = pd.read_csv('AAPL.csv')
+    single_step_window = StockGenerator(input_width=60, label_width=1,shift=60,label_columns=['Close'])
+    print(df.columns)
+    df = pd.read_csv('AAPL.csv')
+    column_indices = {name: i for i, name in enumerate(df.columns)}
+    
+    single_step_window.train_df = df[:int(len(df)*.7)]
+    single_step_window.val_df = df[int(len(df)*.7):int(len(df)*.9)]
+    single_step_window.test_df = df[int(len(df)*.9):]
 
+    #Normalize data
+    train_mean = single_step_window.train_df.mean()
+    train_std = single_step_window.train_df.std()
 
-#Normalize data
-train_mean = train_df.mean()
-train_std = train_df.std()
+    single_step_window.train_df = (single_step_window.train_df - train_mean)/train_std
+    single_step_window.val_df = (single_step_window.val_df - single_step_window.train_df) / train_std
+    single_step_window.test_df = (single_step_window.test_df - train_mean) / train_std
+    
+    baseline = Baseline(label_index=column_indices['Close'])
+    baseline.compile(loss=tf.losses.MeanSquaredError(),
+                     metrics=[tf.metrics.MeanAbsoluteError()])
+    val_performance = {}
+    performance = {}
+    val_performance['Baseline'] = baseline.evaluate(single_step_window.val)
+    performance['Baseline'] = baseline.evaluate(single_step_window.test, verbose=0)
+    
+   # test_run = 
 
-train_df = (train_df - train_mean)/train_std
-val_df = (val_df - train_df) / train_std
-test_df = (test_df - train_mean) / train_std
-s = StockGenerator(input_width=60, label_width=1,shift=60,label_columns=['Close'])
-
-s
