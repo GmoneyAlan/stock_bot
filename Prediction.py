@@ -14,6 +14,7 @@ df = pd.read_csv('AAPL.csv')
 train_df = df[:int(len(df)*.7)]
 val_df = df[int(len(df)*.7):int(len(df)*.9)]
 test_df = df[int(len(df)*.9):]
+MAX_EPOCHS = 20
 
 class StockGenerator():
     def __init__(self, input_width, label_width, shift,
@@ -108,7 +109,9 @@ class StockGenerator():
         if n == 0:
             plt.legend()
 
-    plt.xlabel('Time [d]')
+        plt.xlabel('Time [d]')
+        plt.ylabel('Closing Price')
+        plt.show()
 
             
     @property
@@ -143,6 +146,21 @@ class Baseline(tf.keras.Model):
         return result[:,:,tf.newaxis]
          
     
+def compile_and_fit(model, window, patience=2):
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+                                                      patience=patience,
+                                                      mode='min')
+    
+    model.compile(loss=tf.losses.MeanSquaredError(),
+                  optimizer=tf.optimizers.Adam(),
+                  metrics=[tf.metrics.MeanAbsoluteError()])
+    
+    history = model.fit(window.train, epochs=MAX_EPOCHS,
+                        validation_data=window.val,
+                        callbacks=[early_stopping])
+    
+    return history
+
 if __name__ == '__main__':
     
     #print(df.head())
@@ -150,7 +168,7 @@ if __name__ == '__main__':
         #70% = training
         #20% = validation
         #10% = test sets
-    single_step_window = StockGenerator(input_width=1, label_width=1,shift=1,label_columns=['Close'])
+    single_step_window = StockGenerator(input_width=60, label_width=60,shift=1,label_columns=['Close'])
     print(single_step_window)
     #print(df.columns)
     
@@ -178,10 +196,24 @@ if __name__ == '__main__':
     performance = {}
     val_performance['Baseline'] = baseline.evaluate(single_step_window.val)
     performance['Baseline'] = baseline.evaluate(single_step_window.test, verbose=0)
+    '''
     for example_inputs, example_labels in single_step_window.train.take(1):
         print(f'Inputs shape (batch, time, features): {example_inputs.shape}')
         print(f'Labels shape (batch, time, features): {example_labels.shape}')
     print('Input Shape:', single_step_window.example[0].shape)
     print('Output Shape:', baseline(single_step_window.example[0]).shape)
+    '''
     single_step_window.plot(baseline)
 
+    dense = tf.keras.Sequential([
+        tf.keras.layers.Dense(units=64, activation='relu'),
+        tf.keras.layers.Dense(units=64,activation='relu'),
+        tf.keras.layers.Dense(units=1)
+    ])
+    
+    history = compile_and_fit(dense, single_step_window)
+    
+    val_performance['Dense'] = dense.evaluate(single_step_window.val)
+    performance['Dense'] = dense.evaluate(single_step_window.test, verbose=0)
+    
+    single_step_window.plot(dense)
